@@ -1,0 +1,487 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html>
+	
+	<head>
+		<title>
+			Space Wars
+		</title>
+		<link href='http://fonts.googleapis.com/css?family=Michroma|Electrolize|Orbitron:400,700,500,900|Aldrich|Play:400,700' rel='stylesheet' type='text/css'>
+		<style>
+			body {
+				font-family: Electrolize, sans-serif;
+			}
+			#left-hud {
+				position: fixed;
+				left: 20px;
+				top: 20px;
+				width: 250px;
+				height: 150px;
+				background: rgba(128, 128, 256, 0.2);
+				color: rgba(128, 128, 256, 1);
+				z-index: 1;
+				border: 1px solid rgba(128, 128, 256, 0.2);
+				border-radius: 5px;
+				padding: 10px;
+				box-sizing: border-box;
+			}
+			#left-hud h1 {
+				margin:0;
+				font-size: 20px;
+			}
+			#radar-hud {
+				position: fixed;
+				top: 20px;
+				right: 20px;
+				width: 150px;
+				height: 150px;
+				z-index: 1;
+			}
+		</style>
+		<script src="/static/CubicVR.min.js" type="text/javascript"></script>
+		<script src="/static/socket.io.js" type="text/javascript"></script>
+		<script type='text/javascript'>
+			var KEY_LEFT = 37;
+			var KEY_UP = 38;
+			var KEY_RIGHT = 39;
+			var KEY_DOWN = 40;
+			var KEY_A = 65;
+			var KEY_D = 68;
+			var KEY_W = 87;
+			var KEY_S = 83;
+			var KEY_SHIFT = 16;
+			var KEY_CTRL = 17;
+			var KEY_SPACE = 32;
+			var KEY_Z = 90;
+			var FOV = 70;
+
+			var SPREAD = 400;
+			var SHOT_DELAY = 0.2;
+			var SHOT_SPEED = 200;
+			
+			var last_time = 0;
+			var counter = 1;
+			var ps = null;
+			var shooting = false;
+			var shots = [];
+			var shotDelay = 0;
+			var scene = null;
+			var ship = null;
+			var particles = null;
+			var shipMesh = null;
+			var currentPlayer = null;
+			var socket = null;
+
+			var colorsArray = {
+				"red" : [1.0, 0, 0],
+				"green" : [0, 1.0, 0],
+				"yellow" : [1.0, 1.0, 0],
+				"orange" : [0.5, 0.5, 0],
+				"teal" : [0, 1.0, 1.0],
+				"blue" : [0, 0, 1.0],
+				"purple" : [1.0, 0, 1.0],
+
+			}
+			var players = {};
+			var playerId = null;
+
+			function start(player, name, color, position, rotation, health, score) {
+				if (!playerId) {
+					playerId = player;
+
+					shipMesh = new CubicVR.loadMesh("static/ship-" + color + ".js");
+					shipMesh.clean();
+
+					ship = new CubicVR.SceneObject({
+							mesh: shipMesh,
+							position: position.slice(0),
+							rotation: rotation.slice(0)
+						});
+
+					players[playerId] = {
+						name: name,
+						color: color,
+						ship: ship,
+						velocity: [0,0,0],
+						thrust: 0,
+						rotationX: 0,
+						rotationY: 0,
+						health: health,
+						score: score
+					}
+
+					currentPlayer = players[playerId];
+
+					scene.bind(ship);
+
+					scene.camera.position = [0, 10, 20];
+					scene.camera.target = [0, 0, 0];
+					scene.camera.setParent(ship);
+
+				} else {
+					players[playerId].ship.position = position;
+					players[playerId].ship.rotation = rotation;
+					players[playerId].health = 100;
+				}
+
+				document.getElementById("health").innerHTML = 100;
+				updatePlayerToServer();
+
+
+			}
+
+			function addPlayerView(player, name, color, position, rotation, velocity, thrust, rotationX, rotationY, health) {
+				console.log("Adding player view " + player + " name " + name + " color " + color);
+
+				shipMesh = new CubicVR.loadMesh("static/ship-" + color + ".js");
+				shipMesh.clean();
+
+				var playerShip = new CubicVR.SceneObject({
+					mesh: shipMesh,
+					position: position.slice(0),
+					rotation: rotation.slice(0)
+				});
+				scene.bind(playerShip);
+
+				players[player] = {
+					name: name,
+					color: color,
+					velocity: velocity.slice(0),
+					ship : playerShip,
+					thrust: thrust,
+					rotationX: rotationX,
+					rotationY: rotationY,
+					health: health
+				}
+
+			}
+
+			function updatePlayerView(player, position, rotation, velocity, thrust, rotationX, rotationY) {
+				players[player].ship.position = position.slice(0);
+				players[player].ship.rotation = rotation.slice(0);
+				players[player].velocity = velocity.slice(0);
+				players[player].thrust = thrust;
+				players[player].rotationX = rotationX;
+				players[player].rotationY = rotationY;
+			}
+
+			function shotView(player, position, rotation, speed) {
+				createShot(position, rotation, speed, players[player].color);
+			}
+
+			function shoot(speed) {
+				socket.emit("shot", [ship.position[0] - ship.tMatrix[0] * 5, ship.position[1] - ship.tMatrix[1] * 5, ship.position[2] - ship.tMatrix[2] * 5], ship.rotation, speed, ship.tMatrix);
+
+				socket.emit("shot", [ship.position[0] + ship.tMatrix[0] * 5, ship.position[1] + ship.tMatrix[1] * 5, ship.position[2] + ship.tMatrix[2] * 5], ship.rotation, speed, ship.tMatrix);
+			}
+			
+			function createShot(shotPosition, shotRotation, speed, color) {
+				var boxMaterial = new CubicVR.Material({ color: colorsArray[color] });
+				var boxMesh = new CubicVR.Mesh({
+					primitive: {
+						type: "cylinder",
+						radius: 0.2,
+						height: 10,
+						lon: 10,
+						material: boxMaterial,
+						transform: {
+							position: [0,0,10],
+                        	rotation: [-90,0,0]
+            			}
+					},
+					compile: true
+				});
+				
+				var shot = new CubicVR.SceneObject({
+					mesh: boxMesh, 
+					position: shotPosition,
+					rotation: shotRotation
+				});
+				
+				shot.timeLeft = 1;
+				shot.speed = speed;
+				shots.push(shot);
+				scene.bind(shot,true);
+			}
+
+			function destroyPlayerView(player) {
+				console.log("removing player " + player);
+				scene.remove(players[player].ship);
+			}
+
+			function updatePlayerHealth(player, health) {
+				players[player].health = health;
+				if (player == playerId) {
+					document.getElementById("health").innerHTML = health;
+				}
+			}
+			function updatePlayerScore(player, score) {
+				players[player].scpre = score;
+				if (player == playerId) {
+					document.getElementById("score").innerHTML = score;
+				}
+			}
+
+			function updatePlayerToServer() {
+				var p = players[playerId];
+				socket.emit("updatePlayerInfo", p.ship.position, p.ship.rotation, p.velocity, p.thrust, p.rotationX, p.rotationY, p.health);
+			}
+
+			function drawRadar() {
+				var ctx = document.getElementById("radar-hud").getContext("2d");
+
+				ctx.clearRect(0,0,150,150);
+
+				ctx.fillStyle = "rgba(128,128,255,0.2)";
+
+				ctx.beginPath();
+				ctx.arc(75, 75, 75, 0, Math.PI*2, true);
+				ctx.closePath();
+				ctx.fill();
+
+
+				for (var player in players) {
+					x = (players[playerId].ship.position[0] - players[player].ship.position[0]) / 10;
+					y = (players[playerId].ship.position[2] - players[player].ship.position[2]) / 10;
+
+					if (Math.sqrt(x * x + y * y) < 75) {
+						ctx.fillStyle = players[player].color;
+						ctx.beginPath();
+						//ctx.moveTo(0,10);
+						//ctx.lineTo(5,-10);
+						//ctx.lineTo(-5,-10);
+						//ctx.lineTo(0,10);
+						//ctx.rotate(players[player].ship.rotation[0]);
+
+						ctx.arc(75 + x, 75 + y, 3, 0, Math.PI*2, true);
+						ctx.closePath();
+						ctx.fill();
+					}
+				}
+			}
+
+			window.addEventListener("keydown", function(e) {
+				switch(e.keyCode) {
+					case KEY_LEFT:
+						players[playerId].rotationY = 1;
+					break;
+					case KEY_RIGHT:
+						players[playerId].rotationY = -1;
+					break;
+					case KEY_UP:
+						players[playerId].rotationX = -1;
+					break;
+					case KEY_DOWN:
+						players[playerId].rotationX = 1;
+					break;
+					case KEY_A:
+						players[playerId].thrust = -2;
+					break;
+					case KEY_Z:
+						players[playerId].thrust = 1;
+					break;
+					case KEY_SPACE:
+						shooting = true;
+					break;
+				}
+				updatePlayerToServer();
+
+			});
+			window.addEventListener("keyup", function(e) {
+				switch(e.keyCode) {
+					case KEY_LEFT:
+						players[playerId].rotationY = 0;
+					break;
+					case KEY_RIGHT:
+						players[playerId].rotationY = 0;
+					break;
+					case KEY_UP:
+						players[playerId].rotationX = 0;
+					break;
+					case KEY_DOWN:
+						players[playerId].rotationX = 0;
+					break;
+					case KEY_A:
+						players[playerId].thrust = 0;
+					break;
+					case KEY_Z:
+						players[playerId].thrust = 0;
+					break;
+					case KEY_SPACE:
+						shooting = false;
+					break;
+				
+				}
+				updatePlayerToServer();
+
+			});
+			
+
+			function webGLStart() {
+
+
+				// by default generate a full screen canvas with automatic resize
+				var gl = CubicVR.init();
+				var canvas = CubicVR.getCanvas();
+
+				if (!gl) {
+					alert("Sorry, no WebGL support.");
+					return;
+				};
+
+				socket = io.connect("/");
+
+				socket.on("start", start);
+				socket.on("addPlayerView", addPlayerView);
+				socket.on("updatePlayerView", updatePlayerView);
+				socket.on("shotView", shotView);
+				socket.on("destroyPlayerView", destroyPlayerView);
+				socket.on("updatePlayerHealth", updatePlayerHealth);
+				socket.on("updatePlayerScore", updatePlayerScore);
+
+				scene = new CubicVR.Scene(canvas.width, canvas.height, FOV);
+				scene.bind(new CubicVR.Light({type:"directional",specular:[1,1,1],direction:CubicVR.vec3.normalize([0.5,-1,0.5])}));
+				scene.setSkyBox(new CubicVR.SkyBox({
+					texture: "/static/space_skybox.jpg"
+				}));
+
+				ps = new CubicVR.ParticleSystem(1000,false,null,1000,1000,false);
+				particles = [];
+				
+				for (var i = 0; i < 1000; i++) {
+					particles.push([Math.random() * SPREAD * 2 - SPREAD,Math.random() * SPREAD * 2 - SPREAD,Math.random() * SPREAD * 2 - SPREAD]);
+				}
+
+				// initialize a mouse view controller
+				var mvc = new CubicVR.MouseViewController(canvas, scene.camera);
+
+				// Add our scene to the window resize list
+				CubicVR.addResizeable(scene);
+
+				// Start our main drawing loop, it provides a timer and the gl context as parameters
+				CubicVR.MainLoop(function(timer, gl) {
+					if (playerId == null) {
+						return;
+					} 
+
+
+					// calculate the time in seconds since the last call to this loop
+					var timeDiff = (timer.time_elapsed - last_time) / 1000;
+					last_time = timer.time_elapsed;
+
+					// calculate field of view according to speed
+					var pv = players[playerId].velocity;
+					var shipSpeed = Math.sqrt(pv[0] * pv[0] + pv[1] * pv[1] + pv[2] * pv[2]);
+					document.getElementById("speed").innerHTML = shipSpeed < 1 ? 0 : parseInt(shipSpeed);
+					scene.camera.setFOV(FOV + shipSpeed * 0.2);
+
+					drawRadar();
+					// move all ships, including ours
+					for (var p in players) {
+						var ship = players[p].ship;
+						var v = players[p].velocity;
+						
+						ship.position[0] = ship.position[0] + v[0] * timeDiff;
+						ship.position[1] = ship.position[1] + v[1] * timeDiff;
+						ship.position[2] = ship.position[2] + v[2] * timeDiff;
+						
+						v[0] = v[0] * (1 - timeDiff);
+						v[1] = v[1] * (1 - timeDiff);
+						v[2] = v[2] * (1 - timeDiff);
+						
+						// forward thrust
+						v[0] = v[0] + players[p].thrust * ship.tMatrix[8];
+						v[1] = v[1] + players[p].thrust * ship.tMatrix[9];
+						v[2] = v[2] + players[p].thrust * ship.tMatrix[10];
+						
+						// rotation
+						ship.rotX += players[p].rotationX;
+						ship.rotY += players[p].rotationY;
+												
+					}
+
+					counter += timeDiff;
+					if (counter > 1) {
+						
+						counter = 0;
+					
+						ps = new CubicVR.ParticleSystem(1000,false,null,1000,1000,false);
+						
+						for (var i = 0; i < 1000; i++) {
+							if (particles[i][0] - ship.position[0] > SPREAD) particles[i][0] -= SPREAD * 2;
+							if (particles[i][1] - ship.position[1] > SPREAD) particles[i][1] -= SPREAD * 2;
+							if (particles[i][2] - ship.position[2] > SPREAD) particles[i][2] -= SPREAD * 2;
+							if (particles[i][0] - ship.position[0] < -SPREAD) particles[i][0] += SPREAD * 2;
+							if (particles[i][1] - ship.position[1] < -SPREAD) particles[i][1] += SPREAD * 2;
+							if (particles[i][2] - ship.position[2] < -SPREAD) particles[i][2] += SPREAD * 2;
+							
+							var p = new CubicVR.Particle(particles[i],0,0,[0,0,0],[0,0,0]);
+							ps.addParticle(p);
+
+							var power = Math.random();
+							p.color = new Float32Array( [power,power,power] );
+						}
+					}
+
+					ps.draw(scene.camera.mvMatrix,scene.camera.pMatrix,timer.time_elapsed / 1000);
+					
+					for (i = 0; i < shots.length; i++) {
+						var shot = shots[i];
+
+						if (shot.timeLeft < 0) {
+							scene.remove(shot);
+							shot.toRemove = true;
+
+							//shots.pop(i);
+							//i -= 1;
+						} else {
+
+							shot.position[0] -= shot.tMatrix[8] * timeDiff * shot.speed;
+							shot.position[1] -= shot.tMatrix[9] * timeDiff * shot.speed;
+							shot.position[2] -= shot.tMatrix[10] * timeDiff * shot.speed;
+							shot.timeLeft -= timeDiff;
+						}
+					}
+
+					var shotIndex = 0;
+					while (shotIndex < shots.length) {
+						if (shots[shotIndex].toRemove) {
+							shots.splice(shotIndex, 1);
+						} else {
+							shotIndex++;
+						}
+					}
+
+					
+					if (shooting) {
+						if (shotDelay <= 0) {
+							shoot(SHOT_SPEED);
+
+							shotDelay = SHOT_DELAY;
+						}
+					}
+					
+					if (shotDelay > 0) {
+						shotDelay -= timeDiff;
+					}
+					
+					scene.render();
+
+				});
+				
+				
+			}
+		</script>
+	</head>
+	
+	<body onLoad="webGLStart();">
+		<div id="left-hud">
+			<h1>Space Wars</h1>
+			<p>Speed: <span id="speed"></span> kph</p>
+			<p>Health: <span id="health"></span>%</p>
+			<p>Score: <span id="score">0</span> kills</p>
+		</div>
+		<canvas id="radar-hud" height="150" width="150"></canvas>
+	</body>
+
+</html>
