@@ -15,8 +15,8 @@
 				position: fixed;
 				left: 20px;
 				top: 20px;
-				width: 250px;
-				height: 150px;
+				width: 200px;
+				height: 200px;
 				background: rgba(128, 128, 256, 0.2);
 				color: rgba(128, 128, 256, 1);
 				z-index: 1;
@@ -26,8 +26,16 @@
 				box-sizing: border-box;
 			}
 			#left-hud h1 {
+				color: white;
+				font-weight: normal;
 				margin:0;
-				font-size: 20px;
+				font-size: 24px;
+			}
+			#left-hud p {
+				margin: 0;
+			}
+			a {
+				color: white;
 			}
 			#radar-hud {
 				position: fixed;
@@ -494,9 +502,14 @@
 	<body onLoad="webGLStart();">
 		<div id="left-hud">
 			<h1>Space Wars</h1>
-			<p>Speed: <span id="speed"></span> kph</p>
-			<p>Health: <span id="health"></span>%</p>
-			<p>Score: <span id="score">0</span> kills</p>
+			<p>Arrow keys - Rotation</p>
+			<p>A - Forward, Z - Back</p>
+			<p>Space - Fire</p>
+			<p><a href="http://github.com/ronreiter/spacewars">Fork me on GitHub</a><br/><br/></p>
+
+			<p><b>Speed</b>: <span id="speed"></span> kph</p>
+			<p><b>Health</b>: <span id="health"></span>%</p>
+			<p><b>Score</b>: <span id="score">0</span> kills</p>
 		</div>
 		<canvas id="radar-hud" height="150" width="150"></canvas>
 
