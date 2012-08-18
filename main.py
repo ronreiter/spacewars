@@ -22,6 +22,9 @@ def random_color():
 def create_random_str():
 	return hashlib.sha256(str(random.getrandbits(1000))).hexdigest()
 
+def get_random_position():
+	return [random.random() * 100 - 50,0,random.random() * 100 - 50]
+	
 class SessionManager:
 	sessions = {}
 
@@ -55,7 +58,7 @@ class EventHandler(tornadio2.SocketConnection):
 		self.id = current_player_id
 		self.name = "Ron"
 		self.color = random_color()
-		self.position = [0,0,0]
+		self.position = get_random_position()
 		self.rotation = [0,0,0]
 		self.velocity = [0,0,0]
 		self.health = 100
@@ -158,7 +161,7 @@ def callback():
 
 				else:
 					# game over, restart player
-					target.position = [0,0,0]
+					target.position = get_random_position()
 					target.rotation = [0,0,0]
 					target.health = 100
 					shooter.score += 1

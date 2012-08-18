@@ -6,7 +6,7 @@
 		<title>
 			Space Wars
 		</title>
-		<link href='http://fonts.googleapis.com/css?family=Michroma|Electrolize|Orbitron:400,700,500,900|Aldrich|Play:400,700' rel='stylesheet' type='text/css'>
+		<link href='http://fonts.googleapis.com/css?family=Electrolize' rel='stylesheet' type='text/css'>
 		<style>
 			body {
 				font-family: Electrolize, sans-serif;
@@ -58,6 +58,7 @@
 			var SPREAD = 400;
 			var SHOT_DELAY = 0.2;
 			var SHOT_SPEED = 200;
+			var FIRE_SPAN = 3;
 			
 			var last_time = 0;
 			var counter = 1;
@@ -95,7 +96,7 @@
 					ship = new CubicVR.SceneObject({
 							mesh: shipMesh,
 							position: position.slice(0),
-							rotation: rotation.slice(0)
+							rotation: rotation.slice(0)							
 						});
 
 					players[playerId] = {
@@ -170,25 +171,32 @@
 			}
 
 			function shoot(speed) {
-				socket.emit("shot", [ship.position[0] - ship.tMatrix[0] * 5, ship.position[1] - ship.tMatrix[1] * 5, ship.position[2] - ship.tMatrix[2] * 5], ship.rotation, speed, ship.tMatrix);
+				var shotPosition;
+				shotPosition = new CubicVR.Transform(ship.tMatrix).translate([FIRE_SPAN,0,-15]).getResult().splice(12,3);
+				socket.emit("shot", shotPosition, ship.rotation, speed, ship.tMatrix);
 
-				socket.emit("shot", [ship.position[0] + ship.tMatrix[0] * 5, ship.position[1] + ship.tMatrix[1] * 5, ship.position[2] + ship.tMatrix[2] * 5], ship.rotation, speed, ship.tMatrix);
+				shotPosition = new CubicVR.Transform(ship.tMatrix).translate([-FIRE_SPAN,0,-15]).getResult().splice(12,3);
+				socket.emit("shot", shotPosition, ship.rotation, speed, ship.tMatrix);
 			}
 			
 			function createShot(shotPosition, shotRotation, speed, color) {
 				var boxMaterial = new CubicVR.Material({ color: colorsArray[color] });
 				var boxMesh = new CubicVR.Mesh({
-					primitive: {
+/*					primitive: {
 						type: "cylinder",
 						radius: 0.2,
 						height: 10,
-						lon: 10,
+						divisions: 8,
 						material: boxMaterial,
-						transform: {
-							position: [0,0,10],
-                        	rotation: [-90,0,0]
-            			}
+						transform: new CubicVR.Transform().translate([0,-5,0]).rotate([90,0,0])
+					},*/
+					primitive: {
+						type: "box",
+						size: 0.2,
+						material: boxMaterial,
+						transform: new CubicVR.Transform().scale([1,1,50])
 					},
+
 					compile: true
 				});
 				
@@ -244,16 +252,25 @@
 					x = (players[playerId].ship.position[0] - players[player].ship.position[0]) / 10;
 					y = (players[playerId].ship.position[2] - players[player].ship.position[2]) / 10;
 
-					if (Math.sqrt(x * x + y * y) < 75) {
+					if (player == playerId) {
 						ctx.fillStyle = players[player].color;
 						ctx.beginPath();
-						//ctx.moveTo(0,10);
-						//ctx.lineTo(5,-10);
-						//ctx.lineTo(-5,-10);
-						//ctx.lineTo(0,10);
-						//ctx.rotate(players[player].ship.rotation[0]);
 
-						ctx.arc(75 + x, 75 + y, 3, 0, Math.PI*2, true);
+						ctx.moveTo(75,65);
+						ctx.lineTo(80,80);
+						ctx.lineTo(75,78);
+						ctx.lineTo(70,80);
+						ctx.lineTo(75,65);
+						ctx.closePath();
+						ctx.fill();
+						
+
+					} else if (Math.sqrt(x * x + y * y) < 75) {
+						ctx.fillStyle = players[player].color;
+						ctx.beginPath();
+
+						var rotation = players[playerId].ship.rotation[1] / (180 / Math.PI);
+						ctx.arc(75 - Math.cos(rotation) * x + Math.sin(rotation) * y, 75 - Math.sin(rotation) * x - Math.cos(rotation) * y, 3, 0, Math.PI*2, true);
 						ctx.closePath();
 						ctx.fill();
 					}
@@ -482,6 +499,12 @@
 			<p>Score: <span id="score">0</span> kills</p>
 		</div>
 		<canvas id="radar-hud" height="150" width="150"></canvas>
+
+		<audio autoplay="autoplay" loop="loop" >
+  			<source src="/static/spacewars.mp3" type="audio/mp3" />
+		</audio>
+
 	</body>
 
 </html>
+
