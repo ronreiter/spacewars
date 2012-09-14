@@ -5,4 +5,4 @@ This is a simple space shooter network game, created using the CubicVR engine an
 
 The webserver is Python based (requires TornadIO2).
 
-Start shooting now at: http://cubegrid.com:8080
+Start shooting now at: http://107.20.220.131:8095
