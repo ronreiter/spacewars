@@ -7,7 +7,7 @@ import hashlib
 import random
 import time
 
-APP_PORT = 8080
+APP_PORT = 8095
 SESSION_COOKIE_NAME = "session"
 COLORS = ["red", "green", "yellow", "orange", "purple", "blue", "teal"]
 
