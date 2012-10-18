@@ -81,6 +81,7 @@
 			var currentPlayer = null;
 			var socket = null;
 
+            // the colors array for the radar
 			var colorsArray = {
 				"red" : [1.0, 0, 0],
 				"green" : [0, 1.0, 0],
@@ -90,14 +91,16 @@
 				"blue" : [0, 0, 1.0],
 				"purple" : [1.0, 0, 1.0],
 
-			}
+			};
 			var players = {};
 			var playerId = null;
 
+            // runs when a new player is added
 			function start(player, name, color, position, rotation, health, score) {
 				if (!playerId) {
 					playerId = player;
 
+                    // create the global ship object
 					shipMesh = new CubicVR.loadMesh("static/ship-" + color + ".js");
 					shipMesh.clean();
 
@@ -107,6 +110,7 @@
 							rotation: rotation.slice(0)							
 						});
 
+                    // iniitalize our player data
 					players[playerId] = {
 						name: name,
 						color: color,
@@ -117,31 +121,37 @@
 						rotationY: 0,
 						health: health,
 						score: score
-					}
+					};
 
 					currentPlayer = players[playerId];
 
+                    // bind the ship object to the scene
 					scene.bind(ship);
 
+                    // set up the scene camera and bind it to our ship
 					scene.camera.position = [0, 10, 20];
 					scene.camera.target = [0, 0, 0];
 					scene.camera.setParent(ship);
 
-				} else {
+                    // update the current player data
+                    document.getElementById("health").innerHTML = 100;
+                    updatePlayerToServer();
+
+
+                } else {
+                    // initialize a player which is not ourselves
 					players[playerId].ship.position = position;
 					players[playerId].ship.rotation = rotation;
 					players[playerId].health = 100;
 				}
 
-				document.getElementById("health").innerHTML = 100;
-				updatePlayerToServer();
-
-
 			}
 
+            // add a new player view (not ours)
 			function addPlayerView(player, name, color, position, rotation, velocity, thrust, rotationX, rotationY, health) {
 				console.log("Adding player view " + player + " name " + name + " color " + color);
 
+                // create the ship and bind it to the scene, according to the color, position and rotation
 				shipMesh = new CubicVR.loadMesh("static/ship-" + color + ".js");
 				shipMesh.clean();
 
@@ -152,6 +162,7 @@
 				});
 				scene.bind(playerShip);
 
+                // update the player data
 				players[player] = {
 					name: name,
 					color: color,
@@ -165,6 +176,9 @@
 
 			}
 
+            // update the player view of any player, according to its ID. we don't use this to update
+            // ourselves because we know where we are at all times. Although we should do this to avoid cheating,
+            // but in a way that it is fun to play and doesn't jitter.
 			function updatePlayerView(player, position, rotation, velocity, thrust, rotationX, rotationY) {
 				players[player].ship.position = position.slice(0);
 				players[player].ship.rotation = rotation.slice(0);
@@ -174,10 +188,12 @@
 				players[player].rotationY = rotationY;
 			}
 
+            // called when a new shot is created on the server
 			function shotView(player, position, rotation, speed) {
 				createShot(position, rotation, speed, players[player].color);
 			}
 
+            // called when the user shoots
 			function shoot(speed) {
 				var shotPosition;
 				shotPosition = new CubicVR.Transform(ship.tMatrix).translate([FIRE_SPAN,0,-15]).getResult().splice(12,3);
@@ -186,7 +202,8 @@
 				shotPosition = new CubicVR.Transform(ship.tMatrix).translate([-FIRE_SPAN,0,-15]).getResult().splice(12,3);
 				socket.emit("shot", shotPosition, ship.rotation, speed, ship.tMatrix);
 			}
-			
+
+            // called when a new shot view is created in the scene
 			function createShot(shotPosition, shotRotation, speed, color) {
 				var boxMaterial = new CubicVR.Material({ color: colorsArray[color] });
 				var boxMesh = new CubicVR.Mesh({
@@ -207,42 +224,55 @@
 
 					compile: true
 				});
-				
+
 				var shot = new CubicVR.SceneObject({
 					mesh: boxMesh, 
 					position: shotPosition,
 					rotation: shotRotation
 				});
-				
+
+                // initialize the shot data to 1 second (lifetime) and the speed
 				shot.timeLeft = 1;
 				shot.speed = speed;
+
+                // add the new shot to the global shots array
 				shots.push(shot);
+
+                // bind it to the scene
 				scene.bind(shot,true);
 			}
 
+            // destroy a player view upon server request
 			function destroyPlayerView(player) {
 				console.log("removing player " + player);
 				scene.remove(players[player].ship);
 			}
 
+            // update a player health upon server request.
 			function updatePlayerHealth(player, health) {
+                // we don't do anything with the player health data now, but we should show a health bar sometimes.
 				players[player].health = health;
 				if (player == playerId) {
 					document.getElementById("health").innerHTML = health;
 				}
 			}
+
+            // update a player's score
 			function updatePlayerScore(player, score) {
+                // we don't do anything with the player score now, but we should show a scoreboard sometimes.
 				players[player].scpre = score;
 				if (player == playerId) {
 					document.getElementById("score").innerHTML = score;
 				}
 			}
 
+            // send our player info to the server
 			function updatePlayerToServer() {
 				var p = players[playerId];
 				socket.emit("updatePlayerInfo", p.ship.position, p.ship.rotation, p.velocity, p.thrust, p.rotationX, p.rotationY, p.health);
 			}
 
+            // draws the radar using a semi-transparent canvas
 			function drawRadar() {
 				var ctx = document.getElementById("radar-hud").getContext("2d");
 
@@ -250,16 +280,21 @@
 
 				ctx.fillStyle = "rgba(128,128,255,0.2)";
 
+                // draw the circle
 				ctx.beginPath();
 				ctx.arc(75, 75, 75, 0, Math.PI*2, true);
 				ctx.closePath();
 				ctx.fill();
 
 
+                // draw the dots for each player according to their coordinates and color
 				for (var player in players) {
+                    // we only use the X and Z coordinates of the players to draw their position, because
+                    // we're assuming that our game is oriented at the X / Z plane
 					x = (players[playerId].ship.position[0] - players[player].ship.position[0]) / 10;
 					y = (players[playerId].ship.position[2] - players[player].ship.position[2]) / 10;
 
+                    // we draw ourself as an arrow and not a dot
 					if (player == playerId) {
 						ctx.fillStyle = players[player].color;
 						ctx.beginPath();
@@ -273,18 +308,28 @@
 						ctx.fill();
 						
 
+
 					} else if (Math.sqrt(x * x + y * y) < 75) {
+                        // we check if the player is close enough to show up on the radar. if so,
+                        // we draw it as a colored circle according to the player's color.
 						ctx.fillStyle = players[player].color;
 						ctx.beginPath();
 
+                        // we also rotate all players according to our orientation so it will be a front facing radar
 						var rotation = players[playerId].ship.rotation[1] / (180 / Math.PI);
-						ctx.arc(75 - Math.cos(rotation) * x + Math.sin(rotation) * y, 75 - Math.sin(rotation) * x - Math.cos(rotation) * y, 3, 0, Math.PI*2, true);
+						ctx.arc(
+                                75 - Math.cos(rotation) * x + Math.sin(rotation) * y,
+                                75 - Math.sin(rotation) * x - Math.cos(rotation) * y,
+                                3,
+                                0,
+                                Math.PI*2, true);
 						ctx.closePath();
 						ctx.fill();
 					}
 				}
 			}
 
+            // handle the key down event
 			window.addEventListener("keydown", function(e) {
 				switch(e.keyCode) {
 					case KEY_LEFT:
@@ -309,9 +354,13 @@
 						shooting = true;
 					break;
 				}
+
+                // update the updated player data to the server
 				updatePlayerToServer();
 
 			});
+
+            // handle the key up event
 			window.addEventListener("keyup", function(e) {
 				switch(e.keyCode) {
 					case KEY_LEFT:
@@ -337,11 +386,14 @@
 					break;
 				
 				}
+
+                // update the updated player data to the server
 				updatePlayerToServer();
 
 			});
 			
 
+            // called when initialized
 			function webGLStart() {
 
 
@@ -352,10 +404,12 @@
 				if (!gl) {
 					alert("Sorry, no WebGL support.");
 					return;
-				};
+				}
 
+                // connects the Socket.IO socket
 				socket = io.connect("/");
 
+                // attaches events
 				socket.on("start", start);
 				socket.on("addPlayerView", addPlayerView);
 				socket.on("updatePlayerView", updatePlayerView);
@@ -364,12 +418,14 @@
 				socket.on("updatePlayerHealth", updatePlayerHealth);
 				socket.on("updatePlayerScore", updatePlayerScore);
 
+                // creates a scenes and binds the skybox
 				scene = new CubicVR.Scene(canvas.width, canvas.height, FOV);
 				scene.bind(new CubicVR.Light({type:"directional",specular:[1,1,1],direction:CubicVR.vec3.normalize([0.5,-1,0.5])}));
 				scene.setSkyBox(new CubicVR.SkyBox({
 					texture: "/static/space_skybox.jpg"
 				}));
 
+                // creates the stars
 				ps = new CubicVR.ParticleSystem(1000,false,null,1000,1000,false);
 				particles = [];
 				
@@ -400,36 +456,46 @@
 					document.getElementById("speed").innerHTML = shipSpeed < 1 ? 0 : parseInt(shipSpeed);
 					scene.camera.setFOV(FOV + shipSpeed * 0.2);
 
+                    // draw the radar
 					drawRadar();
+
 					// move all ships, including ours
 					for (var p in players) {
 						var ship = players[p].ship;
 						var v = players[p].velocity;
-						
+
+                        // move ship position
 						ship.position[0] = ship.position[0] + v[0] * timeDiff;
 						ship.position[1] = ship.position[1] + v[1] * timeDiff;
 						ship.position[2] = ship.position[2] + v[2] * timeDiff;
-						
+
+                        // change ship veloicty according to simulated friction (although there's no
+                        // friction in space, we add some to make it more fun)
 						v[0] = v[0] * (1 - timeDiff);
 						v[1] = v[1] * (1 - timeDiff);
 						v[2] = v[2] * (1 - timeDiff);
 						
-						// forward thrust
+						// add velocity according to forward thrust
+                        // we use the orientation matrix [8,9,10] instead of multiplying with [0,0,1] (the z direction)
+                        // which is faster.
 						v[0] = v[0] + players[p].thrust * ship.tMatrix[8];
 						v[1] = v[1] + players[p].thrust * ship.tMatrix[9];
 						v[2] = v[2] + players[p].thrust * ship.tMatrix[10];
 						
-						// rotation
+						// add rotation because of rotational velocity
 						ship.rotX += players[p].rotationX;
 						ship.rotY += players[p].rotationY;
 												
 					}
 
+                    // just some periodic counter
 					counter += timeDiff;
 					if (counter > 1) {
 						
 						counter = 0;
-					
+
+                        // every once in a while we recreate the particle system by overlapping them to the
+                        // current player's position so it would seem endless.
 						ps = new CubicVR.ParticleSystem(1000,false,null,1000,1000,false);
 						
 						for (var i = 0; i < 1000; i++) {
@@ -443,16 +509,20 @@
 							var p = new CubicVR.Particle(particles[i],0,0,[0,0,0],[0,0,0]);
 							ps.addParticle(p);
 
+                            // we also select a random grayscale color for the particles
 							var power = Math.random();
 							p.color = new Float32Array( [power,power,power] );
 						}
 					}
 
+                    // draw the particle system
 					ps.draw(scene.camera.mvMatrix,scene.camera.pMatrix,timer.time_elapsed / 1000);
-					
+
+                    // advance the shots
 					for (i = 0; i < shots.length; i++) {
 						var shot = shots[i];
 
+                        // remove a shot if it has no time left to live
 						if (shot.timeLeft < 0) {
 							scene.remove(shot);
 							shot.toRemove = true;
@@ -460,14 +530,18 @@
 							//shots.pop(i);
 							//i -= 1;
 						} else {
-
+                            // move the shot forward towards the Z axis (we can multiply the orientation matrix
+                            // by [0,0,1] but this is faster, again.
 							shot.position[0] -= shot.tMatrix[8] * timeDiff * shot.speed;
 							shot.position[1] -= shot.tMatrix[9] * timeDiff * shot.speed;
 							shot.position[2] -= shot.tMatrix[10] * timeDiff * shot.speed;
+
+                            // decrease the time to live of the shot
 							shot.timeLeft -= timeDiff;
 						}
 					}
 
+                    // terrible JavaScript leaves us no choice but to remove shots in an ugly way.
 					var shotIndex = 0;
 					while (shotIndex < shots.length) {
 						if (shots[shotIndex].toRemove) {
@@ -477,7 +551,8 @@
 						}
 					}
 
-					
+					// continuous keyboard shooting, as long as you press the spacebar you will shoot
+                    // according to the SHOT_DELAY interval.
 					if (shooting) {
 						if (shotDelay <= 0) {
 							shoot(SHOT_SPEED);
@@ -485,11 +560,13 @@
 							shotDelay = SHOT_DELAY;
 						}
 					}
-					
+
+                    // decrease the shot cooldown so we can shoot the next time the user presses the space bar.
 					if (shotDelay > 0) {
 						shotDelay -= timeDiff;
 					}
-					
+
+                    // finally, draw.
 					scene.render();
 
 				});
